@@ -1,0 +1,196 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+  <!-- LOAD BOOSTRAP-->
+  <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" />
+  <script href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+  <!-- LOAD WEPAY TOKENIZATION -->
+  <script src="https://static.wepay.com/min/js/tokenization.3.latest.js"></script>
+
+  <!-- LOAD JQUERY AND EXTENSIONS -->
+  <script src="http://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+  <script src="./jquery.payment.min.js"></script>
+
+
+  <!-- LOAD CUSTOM JS -->
+  <script src="./checkout.js"></script>
+
+  <!-- Custom JavaScript for managing the different form fields -->
+  <script>
+    $(document).ready(function() {
+      // initialize WePay
+      WePay.set_endpoint("stage") //change to production when you go live
+
+      $('.cardnumber').payment('formatCardNumber');
+      $('.expirdate').payment('formatCardExpiry');
+      $('.cardcvc').payment('formatCardCVC');
+      $.fn.toggleInputError = function(erred) {
+        this.closest('.input-group').toggleClass('has-error', erred);
+        return this;
+      };
+      $('.paymentForm').submit(function(e) {
+        // prevent
+        e.preventDefault();
+        var cardType = $.payment.cardType($('.cardnumber').val());
+
+        // we need to not only check to see if the info is valid and toggle errors,
+        // we also need to prevent the WePay credit_card/create call from happening if the info is bad
+        var cc_valid = $.payment.validateCardNumber($('.cardnumber').val())
+        $('.cardnumber').toggleInputError(!cc_valid);
+
+        var expir_valid = $.payment.validateCardExpiry($('.expirdate').payment('cardExpiryVal'))
+        $('.expirdate').toggleInputError(!expir_valid);
+
+        var cvc_valid = $.payment.validateCardCVC($('.cardcvc').val(), cardType)
+        $('.cardcvc').toggleInputError(!cvc_valid);
+
+        // not all of the validations pass, then do not continue
+        if (!(cvc_valid && cc_valid && expir_valid)) {
+          console.log("BAD INPUT")
+          return;
+        }
+
+        var client_id = '123490'; //enter your client id here
+
+        // get the expiration date into month and year values
+        var expirdate = $("#expirdate").payment("cardExpiryVal");
+
+        // we have to process it differently depending on the address of the payer
+        // if they are outside the US, we need to include their full address
+        // zipcode also becomes postcode but only if available
+        address_package = {};
+        var country = $("#billing_country option:selected").val()
+        if (country == 'US'){
+            address_package = {"postal_code": $("#zipcode").val()};
+        }
+        else {
+            address_package = {
+                "country":country,
+                "address1": $("#billing_address").val(),
+                "city": $("#billing_city").val()
+            };
+            var postcode = $("#zipcode").val();
+            if (postcode != "") {
+                address_package["postal_code"] = postcode;
+            }
+            var region = $("#billing_state").val();
+            if (region == "") {
+                address_package["region"] = region;
+            }
+
+        }
+
+        //TEST OVERRIDE
+        address_package = {"postal_code": "94123"}
+
+        var credit_card_payload = {
+          client_id: client_id,
+          user_name: $("#firstname").val() + " " + $("#lastname").val(),
+          email: $("#email").val(),
+          cc_number: $("#cardnumber").val(),
+          cvv: $("#cardcvc").val(),
+          expiration_month: expirdate.month,
+          expiration_year: expirdate.year,
+          address: address_package
+        };
+
+        console.log("Calling WePay")
+        WePay.credit_card.create(credit_card_payload, function(data) {
+          console.log(data)
+          if (data.error) {
+            alert(data.error_description);
+            return
+          }
+
+          // we make the checkout call from the server side
+          // so we need to package the checkout level info and send it to our backend
+          // YOU MAY NEED TO ADD MORE INFO HERE BASED ON HOW YOUR SYSTEM IS SET UP
+          // this soultion assumes you already know the WePay account_id
+          // that the payment is being made to
+          var checkout_package = {
+            card_id: data.credit_card_id
+          }
+          $.post("/some_endpoint", checkout_package, function(data) {
+            // handle return
+          })
+        });
+      });
+    })
+  </script>
+
+  <style>
+    .has-error input {
+      border-width: 2px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <form class="form-horizontal paymentForm" id="paymentForm" method="POST">
+      <div class="form-group">
+        <div class="col-lg-6 col-sm-6 col-xs-6">
+          <div class="input-group">
+            <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+            <input id="firstname" name="firstname" class="form-control" type="text" placeholder="First Name" required>
+          </div>
+        </div>
+        <div class="col-lg-6 col-sm-6 col-xs-6">
+          <input id="lastname" name="lastname" class="form-control" type="text" placeholder="Last Name" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="col-lg-12 ">
+          <div class="input-group">
+            <span class="input-group-addon"><i class="glyphicon glyphicon-envelope"></i></span>
+            <input id="email" name="email" class="form-control" type="email" placeholder="Email" autocorrect="no" autocapitalize="no" required>
+          </div>
+        </div>
+      </div>
+      <!-- credit card collection form -->
+      <div class="form-group">
+        <div class="col-lg-12">
+          <div class="panel panel-default">
+            <div class="panel-heading">
+              <div style="text-align:right">
+                <label class="control-label">Card Details</label>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="form-group">
+                <div class="col-xs-12">
+                  <div class="input-group">
+                    <span class="input-group-addon"><i class="glyphicon glyphicon-credit-card"></i></span>
+                    <input id="cardnumber" name="cardnumber" class="form-control cardnumber" type="tel" placeholder="Card Number" required/>
+                  </div>
+                </div>
+              </div>
+              <div class="form-group">
+                <div class="col-xs-6">
+                  <div class="input-group">
+                    <span class="input-group-addon"><i class="glyphicon glyphicon-calendar"></i></span>
+                    <input id="expirdate" name="expirdate" class="form-control expirdate" type="tel" placeholder="MM / YY" required/>
+                  </div>
+                </div>
+                <div class="col-xs-6">
+                  <div class="input-group">
+                    <span class="input-group-addon"><i class="glyphicon glyphicon-compressed"></i></span>
+                    <input id="cardcvc" name="cardcvc" class="form-control cardcvc" type="tel" placeholder="CVC" required/>
+                  </div>
+                </div>
+              </div>
+              <div class="form-group">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- END CARD COLLECTION -->
+      <button type="submit" class="btn btn-success">Submit</button>
+    </form>
+  </div>
+</body>
+
+</html>
