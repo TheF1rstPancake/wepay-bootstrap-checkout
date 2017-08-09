@@ -35,14 +35,15 @@
         return this;
       };
 
-      // clear the error message
-      $("#error-message").hide();
-      $("#error-message-text").empty();
-
       // attach the submit behavior
       $('.paymentForm').submit(function(e) {
         // prevent default actions from occuring
         e.preventDefault();
+
+        // clear the error message
+        $("#error-message").hide();
+        $("#error-message-text").empty();
+
         var cardType = $.payment.cardType($('.cardnumber').val());
 
         // we need to not only check to see if the info is valid and toggle errors,
