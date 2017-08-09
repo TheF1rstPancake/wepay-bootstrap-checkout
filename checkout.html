@@ -14,14 +14,18 @@
   <script src="./jquery.payment.min.js"></script>
 
 
-  <!-- LOAD CUSTOM JS -->
-  <script src="./checkout.js"></script>
+  <!-- Insert your WePay Client ID here -->
+  <meta name='wepay_client_id' content="YOUR CLIENT ID">
+
+  <!-- options are USD, CAD and GBP -->
+  <!-- you should set this dynamically based on what currencies the WePay account is set up to receive-->
+  <meta name="wepay_merchant_currency" content="USD">
 
   <!-- Custom JavaScript for managing the different form fields -->
   <script>
     $(document).ready(function() {
       // initialize WePay
-      //WePay.set_endpoint("stage") //change to production when you go live
+      WePay.set_endpoint("stage") //change to production when you go live
 
       $('.cardnumber').payment('formatCardNumber');
       $('.expirdate').payment('formatCardExpiry');
@@ -30,8 +34,14 @@
         this.closest('.input-group').toggleClass('has-error', erred);
         return this;
       };
+
+      // clear the error message
+      $("#error-message").hide();
+      $("#error-message-text").empty();
+
+      // attach the submit behavior
       $('.paymentForm').submit(function(e) {
-        // prevent
+        // prevent default actions from occuring
         e.preventDefault();
         var cardType = $.payment.cardType($('.cardnumber').val());
 
@@ -47,77 +57,78 @@
         $('.cardcvc').toggleInputError(!cvc_valid);
 
         // not all of the validations pass, then do not continue
-        if (!(cvc_valid && cc_valid && expir_valid)) {
-          console.log("BAD INPUT")
-          return;
-        }
+        if (cvc_valid && cc_valid && expir_valid) {
+          var client_id = $("meta[name='wepay_client_id']").attr('content');
 
-        var client_id = 'YOUR CLIENT ID'; //enter your client id here
+          // get the expiration date into month and year values
+          var expirdate = $("#expirdate").payment("cardExpiryVal");
 
-        // get the expiration date into month and year values
-        var expirdate = $("#expirdate").payment("cardExpiryVal");
-
-        // we have to process it differently depending on the address of the payer
-        // if they are outside the US, we need to include their full address
-        // zipcode also becomes postcode but only if available
-        address_package = {};
-        var country = $("#billing_country option:selected").val()
-        if (country == 'US') {
-          address_package = {
-            "postal_code": $("#zipcode").val()
-          };
-        } else {
-          address_package = {
-            "country": country,
-            "address1": $("#billing_address").val(),
-            "city": $("#billing_city").val()
-          };
-          var postcode = $("#zipcode").val();
-          if (postcode != "") {
-            address_package["postal_code"] = postcode;
-          }
-          var region = $("#billing_state").val();
-          if (region == "") {
-            address_package["region"] = region;
-          }
-
-        }
-
-        // create the credit card payload
-        var credit_card_payload = {
-          client_id: client_id,
-          user_name: $("#firstname").val() + " " + $("#lastname").val(),
-          email: $("#email").val(),
-          cc_number: $("#cardnumber").val(),
-          cvv: $("#cardcvc").val(),
-          expiration_month: expirdate.month,
-          expiration_year: expirdate.year,
-          address: address_package
-        };
-
-        console.log("Calling WePay")
-        WePay.credit_card.create(credit_card_payload, function(data) {
-          console.log(data)
-          if (data.error) {
-            alert(data.error_description);
+          // we have to process it differently depending on the address of the payer
+          // if they are outside the US, we need to include their full address
+          // zipcode also becomes postcode but only if available
+          address_package = {};
+          var country = $("#billing_country option:selected").val()
+          if (country === 'US') {
+            address_package = {
+              "postal_code": $("#zipcode").val()
+            };
           } else {
-            // we make the checkout call from the server side
-            // so we need to package the checkout level info and send it to our backend
-            // YOU MAY NEED TO ADD MORE INFO HERE BASED ON HOW YOUR SYSTEM IS SET UP
-            // this soultion assumes you already know the WePay account_id
-            // that the payment is being made to
-            var checkout_package = {
-              card_id: data.credit_card_id
+            address_package = {
+              "country": country,
+              "address1": $("#billing_address").val(),
+              "city": $("#billing_city").val()
+            };
+            var postcode = $("#zipcode").val();
+            if (postcode != "") {
+              address_package["postal_code"] = postcode;
             }
-            $.post("/some_endpoint", checkout_package, function(data) {
-              // handle return
-              // this is the point when you would tell the user "congrats!"
-              // we recommend you redirect the user to a dedicated page
-            })
+            var region = $("#billing_state").val();
+            if (region == "") {
+              address_package["region"] = region;
+            }
           }
-        });
+
+          // create the credit card payload
+          var credit_card_payload = {
+            client_id: client_id,
+            user_name: $("#firstname").val() + " " + $("#lastname").val(),
+            email: $("#email").val(),
+            cc_number: $("#cardnumber").val(),
+            cvv: $("#cardcvc").val(),
+            expiration_month: expirdate.month,
+            expiration_year: expirdate.year,
+            address: address_package
+          };
+
+          // tokenize the card, and then pass it to your backend
+          WePay.credit_card.create(credit_card_payload, function(data) {
+            console.log(data)
+            if (data.error) {
+              alert(data.error_description);
+            } else {
+              // we make the checkout call from the server side
+              // so we need to package the checkout level info and send it to our backend
+              // YOU MAY NEED TO ADD MORE INFO HERE BASED ON HOW YOUR SYSTEM IS SET UP
+              // this soultion assumes you already know the WePay account_id
+              // that the payment is being made to
+              var checkout_package = {
+                card_id: data.credit_card_id,
+                // add additional data here
+              }
+              $.post("/some_endpoint", checkout_package, function(data) {
+                // handle return
+                // this is the point when you would tell the user "congrats!"
+              }).fail(function(err) {
+                // handle errors using the error message div
+                console.log(err);
+                $("#error-message-text").text("ERROR");
+                $("#error-message").show();
+              });
+            }
+          });
+        }
       });
-    })
+    });
   </script>
 
   <style>
@@ -130,6 +141,12 @@
 <body>
   <div class="container">
     <form class="form-horizontal paymentForm" id="paymentForm" method="POST">
+      <div class="form-group">
+        <div id="error-message" class="col-lg-12" hidden="hidden">
+          <div id="error-message-text" class="alert alert-danger">
+
+        </div>
+      </div>
       <div class="form-group">
         <div class="col-lg-6 col-sm-6 col-xs-6">
           <div class="input-group">
@@ -185,37 +202,31 @@
                 <div class="form-group">
                   <div class="col-lg-12">
                     <label for="billing_address">Address</label>
-                    <input type="text" id="billing_address" name="billing_address" class="form-control" />
+                    <input type="text" id="billing_address" name="billing_address" class="form-control" placeholder="Street Address"/>
                   </div>
                 </div>
                 <div class="form-group">
-                  <div class="col-xs-12 col-md-12 col-lg-6">
+                  <div class="col-xs-6 col-lg-6">
                     <label for="billing_city">City</label>
                     <div>
-                      <input type="text" id="billing_city" name="billing_city" class="form-control">
+                      <input type="text" id="billing_city" name="billing_city" class="form-control" placeholder="City">
                     </div>
                   </div>
-                  <div>
-                    <div class="form-group">
-
-                      <div class="col-xs-12 col-lg-6">
-                        <label for="billing_state" id="state-lbl">Province</label>
-                        <div id="state-prov">
-                          <select id="billing_state" name="billing_state" class="form-control">
-                          </select>
-                        </div>
-                      </div>
+                  <div class="col-xs-6 col-lg-6">
+                    <label for="billing_state" id="state-lbl">Province</label>
+                    <div id="state-prov">
+                      <select id="billing_state" name="billing_state" class="form-control">
+                      </select>
                     </div>
                   </div>
                 </div>
                 <!--/row-->
               </div>
               <div class="form-group">
-                <div class="col-xs-12 col-lg-6">
+                <div class="col-xs-6 col-lg-6">
                   <label for="billing_country">Country</label>
                   <div>
                     <select type="select" id="billing_country" name="billing_country" style="text-transform: capitalize;" class="form-control" required="required" onchange="getState();">
-                      <option value=""> </option>
                       <option value="US" selected="selected">united states</option>
                       <option value="CA">canada</option>
                       <option value="AF">afghanistan</option>
@@ -500,14 +511,17 @@
                         } else if (country == "CA") {
                           $("#state-lbl").empty();
                           $("#state-lbl").text("Province");
-                          $("#zip-lbl").empty();
-                          $("#zip-lbl").text("Post Code");
-                          $("#zipcode").attr("placeholder", "Post Code");
                         } else {
                           $("#state-lbl").empty();
                           $("#state-lbl").text("Region");
                         }
 
+                        // set the labels for the Zip Code
+                        if(country != 'US') {
+                          $("#zip-lbl").empty();
+                          $("#zip-lbl").text("Post Code");
+                          $("#zipcode").attr("placeholder", "Post Code");
+                        }
                         // set the data inside the state/province/region box
                         if (country == "CA") {
                           //empty the div
@@ -535,9 +549,9 @@
                           $("<input/>", {
                             "id": "billing_state",
                             "name": "billing_state",
-                            "class": "form-control"
+                            "class": "form-control",
+                            "placeholder": "Region",
                           }).appendTo("#state-prov");
-
                         }
                       }
                     </script>
@@ -552,9 +566,27 @@
           </div>
         </div>
       </div>
-    <!-- END CARD COLLECTION -->
-    <button type="submit" class="btn btn-success">Submit</button>
-  </form>
+      <div class="form-group">
+        <div class="col-lg-12">
+          <span class="input-group">
+            <span class="input-group-addon" id="price_addon">
+              <script>
+                var currency = $("meta[name='wepay_merchant_currency']").attr("content");
+
+                if (currency.toUpperCase() === "GBP") {
+                  $("#price_addon").text('£');
+                } else {
+                  $("#price_addon").text('$');
+                }
+              </script>
+            </span>
+            <input name="total" id="total" value="0" type="number" class="form-control" disabled="disabled"/>
+          </span>
+        </div>
+      </div>
+      <!-- END CARD COLLECTION -->
+      <button type="submit" class="btn btn-success">Submit</button>
+    </form>
   </div>
 </body>
 
