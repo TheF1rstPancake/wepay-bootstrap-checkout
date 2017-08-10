@@ -3,8 +3,8 @@ A Boostrap styled checkout form with built in WePay tokenization functionality. 
 
 ![Checkout form](/assets/USScreenshot.png)
 
-## Demo
-You can go to https://jalepeno112.github.io/wepay-bootstrap-checkout/checkout.html for a demo.  It will not actually charge the card and will always end in an error, but it gives you a live demo for what the form looks like and how it reacts.
+## [Demo](https://jalepeno112.github.io/wepay-bootstrap-checkout/checkout.html)
+We have a [live demo of the checkout form](https://jalepeno112.github.io/wepay-bootstrap-checkout/checkout.html). It will not actually charge the card and will always end in an error, but it gives you a live demo for what the form looks like and how it reacts.
 
 ## WePay Tokenization
 This checkout form comes with all the hooks into the [WePay tokenization library](https://developer.wepay.com/docs/process-payments/custom-checkout). Tokenizing credit cards requires you to have a [PCI SAQ-A-EP](https://www.pcisecuritystandards.org/documents/SAQ_A-EP_v3.pdf) compliance level.  Without tokenization, you would need to pass the payer's credit card info to your server, which greatly increases your PCI scope.  Tokenization gives you the best of both worlds -- reduced PCI scope and complete control over the checkout experience.
